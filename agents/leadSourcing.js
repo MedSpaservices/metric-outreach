@@ -1,0 +1,134 @@
+import 'dotenv/config';
+import supabase from '../shared/db.js';
+import { log, updateHealth } from '../shared/logger.js';
+
+const APIFY_TOKEN = process.env.APIFY_API_TOKEN;
+const ACTOR_ID = 'WnMxbsRLNbPeYL6ge'; // Google Maps Email Extractor
+const BASE = 'https://api.apify.com/v2';
+
+// 5 target cities — EST timezone, large home service market, low agency competition
+const CITIES = [
+  'Philadelphia, PA',
+  'Charlotte, NC',
+  'Columbus, OH',
+  'Tampa, FL',
+  'Nashville, TN',
+];
+
+// Rotate service type by day of week to maximize variety
+const SERVICES = ['plumbers', 'HVAC contractors', 'electricians', 'landscapers', 'handyman services'];
+
+function getTodayService() {
+  const day = new Date().getDay(); // 0=Sun, 1=Mon, ...
+  return SERVICES[day % SERVICES.length];
+}
+
+async function startScrape(city, service) {
+  const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(`${service} in ${city}`)}`;
+
+  const res = await fetch(`${BASE}/acts/${ACTOR_ID}/runs?token=${APIFY_TOKEN}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      startUrls: [{ url: searchUrl, method: 'GET' }],
+      maxCrawledPlacesPerSearch: 10,
+      scrapeContacts: true,
+      skipClosedPlaces: true,
+      website: 'withWebsite',
+      language: 'en',
+      includeWebResults: false,
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Apify start failed (${res.status}): ${await res.text()}`);
+  const json = await res.json();
+  return { runId: json.data.id, datasetId: json.data.defaultDatasetId };
+}
+
+async function pollUntilDone(runId, timeoutMs = 300000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise(r => setTimeout(r, 10000));
+    const res = await fetch(`${BASE}/actor-runs/${runId}?token=${APIFY_TOKEN}`);
+    if (!res.ok) throw new Error(`Apify status check failed (${res.status})`);
+    const json = await res.json();
+    const status = json.data.status;
+    if (status === 'SUCCEEDED') return;
+    if (['FAILED', 'ABORTED', 'TIMED-OUT'].includes(status)) throw new Error(`Apify run ${status}`);
+  }
+  throw new Error('Apify run timed out after 5 minutes');
+}
+
+function extractEmail(item) {
+  const emailsObj = item.emails;
+  if (Array.isArray(emailsObj) && emailsObj.length > 0) {
+    if (typeof emailsObj[0] === 'object') return emailsObj[0].email ?? null;
+    if (typeof emailsObj[0] === 'string') return emailsObj[0];
+  }
+  if (typeof item.email === 'string') return item.email;
+  const personal = item.personalEmails;
+  if (Array.isArray(personal) && personal.length > 0) return personal[0];
+  const company = item.companyEmails;
+  if (Array.isArray(company) && company.length > 0) return company[0];
+  return null;
+}
+
+async function fetchResults(datasetId) {
+  const res = await fetch(`${BASE}/datasets/${datasetId}/items?token=${APIFY_TOKEN}&clean=true`);
+  if (!res.ok) throw new Error(`Apify dataset fetch failed (${res.status})`);
+  return res.json();
+}
+
+export async function run() {
+  await log('info', 'leadSourcing starting');
+  const service = getTodayService();
+  await log('info', `Today's service: ${service}`);
+
+  let inserted = 0;
+
+  for (const city of CITIES) {
+    await log('info', `Scraping: ${service} in ${city}`);
+    let runId, datasetId;
+
+    try {
+      ({ runId, datasetId } = await startScrape(city, service));
+      await pollUntilDone(runId);
+    } catch (err) {
+      await log('error', `Apify scrape failed for ${city}`, { error: err.message });
+      continue;
+    }
+
+    let items;
+    try {
+      items = await fetchResults(datasetId);
+    } catch (err) {
+      await log('error', `Dataset fetch failed for ${city}`, { error: err.message });
+      continue;
+    }
+
+    for (const item of items) {
+      const lead = {
+        business: item.title || item.name || null,
+        phone: item.phone || null,
+        email: extractEmail(item),
+        website: item.website || null,
+        city,
+        source: 'apify',
+        status: 'new',
+      };
+
+      if (!lead.business) continue;
+
+      const { error } = await supabase
+        .from('metric_leads')
+        .upsert(lead, { onConflict: 'business,city', ignoreDuplicates: true });
+
+      if (!error) inserted++;
+    }
+
+    await log('info', `${city} done. Running total inserted: ${inserted}`);
+  }
+
+  await updateHealth('leadSourcing');
+  await log('info', `leadSourcing complete. Inserted: ${inserted}`);
+}
