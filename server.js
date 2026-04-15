@@ -38,6 +38,7 @@ async function runPipeline() {
     { name: 'copyGen', file: `${base}/agents/copyGen.js` },
     { name: 'sequenceSender', file: `${base}/outreach/sequenceSender.js` },
     { name: 'replyHandler', file: `${base}/outreach/replyHandler.js` },
+    { name: 'dailyReport', file: `${base}/outreach/dailyReport.js` },
   ];
 
   console.log(`[${new Date().toISOString()}] Pipeline starting`);

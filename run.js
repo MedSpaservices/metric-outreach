@@ -8,6 +8,7 @@ const AGENTS = {
   copyGen: './agents/copyGen.js',
   sequenceSender: './outreach/sequenceSender.js',
   replyHandler: './outreach/replyHandler.js',
+  dailyReport: './outreach/dailyReport.js',
 };
 
 const arg = process.argv.find(a => a.startsWith('--agent='));
