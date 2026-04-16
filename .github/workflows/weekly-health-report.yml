@@ -1,0 +1,171 @@
+name: Weekly Infrastructure Health Report
+
+on:
+  schedule:
+    - cron: '0 12 * * 1'  # Every Monday 12pm UTC (8am EST)
+  workflow_dispatch:        # Allow manual trigger from GitHub Actions tab
+
+jobs:
+  health-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run health checks and send report
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          CRON_JOB_ORG_API_KEY: ${{ secrets.CRON_JOB_ORG_API_KEY }}
+        run: |
+          node << 'EOF'
+          const results = [];
+
+          async function check(name, fn) {
+            try {
+              const result = await fn();
+              results.push({ name, ...result });
+            } catch (e) {
+              results.push({ name, status: 'red', detail: `Error: ${e.message}` });
+            }
+          }
+
+          // --- Render endpoints ---
+          async function checkEndpoint(name, url) {
+            const start = Date.now();
+            const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+            const ms = Date.now() - start;
+            const ok = res.status < 500;
+            return {
+              status: ok ? 'green' : 'red',
+              detail: `HTTP ${res.status} (${ms}ms)`
+            };
+          }
+
+          // --- Apify compute units ---
+          async function checkApify() {
+            const res = await fetch('https://api.apify.com/v2/users/me', {
+              headers: { Authorization: `Bearer ${process.env.APIFY_API_TOKEN}` }
+            });
+            const data = await res.json();
+            const used = data.data?.monthlyUsage?.actorComputeUnits ?? null;
+            const limit = data.data?.monthlyUsageLimits?.actorComputeUnits ?? null;
+            if (used === null) return { status: 'yellow', detail: 'Could not read usage' };
+            const pct = Math.round((used / limit) * 100);
+            const status = pct >= 90 ? 'red' : pct >= 70 ? 'yellow' : 'green';
+            return { status, detail: `${used.toFixed(2)} / ${limit} units used (${pct}%)` };
+          }
+
+          // --- Brevo quota ---
+          async function checkBrevo() {
+            const res = await fetch('https://api.brevo.com/v3/account', {
+              headers: { 'api-key': process.env.BREVO_API_KEY }
+            });
+            const data = await res.json();
+            const plan = data.plan?.[0];
+            if (!plan) return { status: 'yellow', detail: 'Could not read plan' };
+            const used = plan.creditsUsed ?? 0;
+            const limit = plan.credits ?? 300;
+            const pct = Math.round((used / limit) * 100);
+            const status = pct >= 90 ? 'red' : pct >= 70 ? 'yellow' : 'green';
+            return { status, detail: `${used} / ${limit} emails today (${pct}%)` };
+          }
+
+          // --- cron-job.org jobs ---
+          async function checkCronJobs() {
+            const res = await fetch('https://api.cron-job.org/jobs', {
+              headers: { Authorization: `Bearer ${process.env.CRON_JOB_ORG_API_KEY}` }
+            });
+            const data = await res.json();
+            const jobs = data.jobs ?? [];
+            const disabled = jobs.filter(j => !j.enabled);
+            const failing = jobs.filter(j => j.lastStatus && j.lastStatus !== 0 && j.enabled);
+            if (failing.length > 0) {
+              return { status: 'red', detail: `${failing.length} job(s) failing: ${failing.map(j => j.title).join(', ')}` };
+            }
+            if (disabled.length > 0) {
+              return { status: 'yellow', detail: `${disabled.length} job(s) disabled` };
+            }
+            return { status: 'green', detail: `${jobs.length} jobs all running` };
+          }
+
+          await Promise.all([
+            check('Metric Outreach (Render)', () => checkEndpoint('Metric Outreach (Render)', 'https://metric-outreach.onrender.com')),
+            check('Med Spa System (Render)', () => checkEndpoint('Med Spa System (Render)', 'https://meds-0u96.onrender.com')),
+            check('Granta Business (Vercel)', () => checkEndpoint('Granta Business (Vercel)', 'https://grantabusiness.com')),
+            check('Apify Compute Units', checkApify),
+            check('Brevo Email Quota', checkBrevo),
+            check('cron-job.org Jobs', checkCronJobs),
+          ]);
+
+          // --- Build HTML email ---
+          const statusColor = { green: '#22c55e', yellow: '#f59e0b', red: '#ef4444' };
+          const statusLabel = { green: 'OK', yellow: 'WARNING', red: 'DOWN' };
+
+          const rows = results.map(r => `
+            <tr>
+              <td style="padding:10px 16px;border-bottom:1px solid #1f2937;">${r.name}</td>
+              <td style="padding:10px 16px;border-bottom:1px solid #1f2937;">
+                <span style="background:${statusColor[r.status]};color:#fff;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;">
+                  ${statusLabel[r.status]}
+                </span>
+              </td>
+              <td style="padding:10px 16px;border-bottom:1px solid #1f2937;color:#9ca3af;font-size:13px;">${r.detail}</td>
+            </tr>
+          `).join('');
+
+          const overall = results.some(r => r.status === 'red') ? 'red'
+            : results.some(r => r.status === 'yellow') ? 'yellow' : 'green';
+
+          const html = `
+          <!DOCTYPE html>
+          <html>
+          <body style="margin:0;padding:0;background:#080C18;font-family:Inter,sans-serif;color:#f9fafb;">
+            <div style="max-width:640px;margin:40px auto;background:#111827;border-radius:12px;overflow:hidden;">
+              <div style="background:#00D4FF;padding:24px 32px;">
+                <h1 style="margin:0;font-size:20px;color:#080C18;font-weight:700;">Metric — Weekly Infrastructure Report</h1>
+                <p style="margin:4px 0 0;font-size:13px;color:#080C18;opacity:0.7;">${new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
+              </div>
+              <div style="padding:24px 32px;">
+                <p style="margin:0 0 20px;font-size:14px;color:#9ca3af;">
+                  Overall status:
+                  <span style="color:${statusColor[overall]};font-weight:600;">${statusLabel[overall]}</span>
+                </p>
+                <table style="width:100%;border-collapse:collapse;font-size:14px;">
+                  <thead>
+                    <tr style="color:#6b7280;font-size:12px;text-transform:uppercase;">
+                      <th style="padding:8px 16px;text-align:left;border-bottom:1px solid #1f2937;">Service</th>
+                      <th style="padding:8px 16px;text-align:left;border-bottom:1px solid #1f2937;">Status</th>
+                      <th style="padding:8px 16px;text-align:left;border-bottom:1px solid #1f2937;">Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rows}</tbody>
+                </table>
+              </div>
+              <div style="padding:16px 32px;border-top:1px solid #1f2937;font-size:12px;color:#4b5563;">
+                Metric Infrastructure Monitor · Auto-generated every Monday
+              </div>
+            </div>
+          </body>
+          </html>`;
+
+          // --- Send via Resend ---
+          const emailRes = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              from: 'Metric Monitor <onboarding@resend.dev>',
+              to: 'mehlek7@gmail.com',
+              subject: `Metric Infrastructure: ${overall === 'green' ? 'All Systems OK' : overall === 'yellow' ? 'Warning — Check Required' : 'ALERT — Service Down'} · ${new Date().toLocaleDateString()}`,
+              html
+            })
+          });
+
+          const emailData = await emailRes.json();
+          if (!emailRes.ok) {
+            console.error('Failed to send email:', JSON.stringify(emailData));
+            process.exit(1);
+          }
+          console.log('Health report sent successfully. ID:', emailData.id);
+          EOF
