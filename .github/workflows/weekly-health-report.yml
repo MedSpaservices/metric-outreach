@@ -156,7 +156,7 @@ jobs:
             },
             body: JSON.stringify({
               from: 'Metric Monitor <onboarding@resend.dev>',
-              to: 'mehlek7@gmail.com',
+              to: 'profitandloop@gmail.com',
               subject: `Metric Infrastructure: ${overall === 'green' ? 'All Systems OK' : overall === 'yellow' ? 'Warning — Check Required' : 'ALERT — Service Down'} · ${new Date().toLocaleDateString()}`,
               html
             })
