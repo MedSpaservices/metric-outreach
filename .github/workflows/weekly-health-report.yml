@@ -147,18 +147,18 @@ jobs:
           </body>
           </html>`;
 
-          // --- Send via Resend ---
-          const emailRes = await fetch('https://api.resend.com/emails', {
+          // --- Send via Brevo ---
+          const emailRes = await fetch('https://api.brevo.com/v3/smtp/email', {
             method: 'POST',
             headers: {
-              Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+              'api-key': process.env.BREVO_API_KEY,
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              from: 'Metric Monitor <onboarding@resend.dev>',
-              to: 'profitandloop@gmail.com',
+              sender: { name: 'Metric Monitor', email: 'mehlek7@gmail.com' },
+              to: [{ email: 'mehlek7@gmail.com' }],
               subject: `Metric Infrastructure: ${overall === 'green' ? 'All Systems OK' : overall === 'yellow' ? 'Warning — Check Required' : 'ALERT — Service Down'} · ${new Date().toLocaleDateString()}`,
-              html
+              htmlContent: html
             })
           });
 
