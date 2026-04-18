@@ -3,9 +3,9 @@ import supabase from '../shared/db.js';
 import { callSonnet } from '../shared/claude.js';
 import { log, updateHealth } from '../shared/logger.js';
 
-const SYSTEM_PROMPT = `You are an expert cold email copywriter. Write short, direct, conversational emails on behalf of Metric — a performance-based marketing consultancy. Always write in first person plural (we/our). Never use buzzwords like "synergy", "cutting-edge", or "game-changer". Write like a real person, not a marketer.
+const SYSTEM_PROMPT = `You are an expert cold email copywriter. Write short, direct, conversational emails on behalf of Metric — an automated follow-up system for home service businesses. Always write in first person plural (we/our). Never use buzzwords like "synergy", "cutting-edge", or "game-changer". Write like a real person, not a marketer.
 
-Metric's pitch: We run reactivation campaigns for home service businesses — we reach back out to their old customers who haven't booked in 6-12 months and get them to re-book. No upfront cost — we only get paid 25% of the revenue from jobs we help rebook. Zero risk to the business owner.`;
+Metric's pitch: We install a missed call text-back system for home service businesses. The moment they miss a call on the job, the caller gets an automatic text within 60 seconds. Our system qualifies the lead and sends them a booking link. The business owner finishes the job they're on — the next one is already on their calendar. We're onboarding 3 founding clients at $97/mo, locked permanently. Standard pricing moves to $297/mo after those spots are filled. No contracts, cancel anytime.`;
 
 function buildUserPrompt(lead) {
   const context = lead.website_snippet
@@ -18,10 +18,10 @@ Business: ${lead.business}
 Context: ${context}
 
 Rules:
-- Email 1: Under 80 words. Open with one specific, natural observation about their business (from context, or generic if no context). Pitch reactivation: we contact their old customers who haven't booked in 6-12 months and get them rebooked — we only take 25% of revenue from jobs we help close, nothing upfront. End with a soft question ("Does that sound like something worth a quick chat about?") — no Calendly link yet.
-- Email 2: 3 days later. Under 60 words. Don't repeat the pitch. Add one concrete insight (e.g. most home service businesses have 40-60% of their customer base go dormant each year — that's untapped revenue sitting idle). End with a different soft CTA.
-- Email 3: 6 days later. Under 50 words. Create mild urgency — we only work with one business per service category per city. Ask if they want to lock in their spot before we move on.
-- Email 4: 10 days later. Under 40 words. Friendly breakup. Leave door open. No hard sell.
+- Email 1: Under 80 words. Subject line hooks on missed calls or lost jobs. Open with the core pain — they miss calls when they're on jobs and those leads book someone else. Introduce the fix: we text the missed caller within 60 seconds, qualify them, and get them booked on their calendar automatically. They finish the job they're on — the next one is already scheduled. End with a soft question ("Worth a quick 15-minute call to see if it fits?") — no Calendly link yet. Include: trymetric.co
+- Email 2: 3 days later. Under 60 words. Don't repeat the full pitch. Add one concrete insight — the average home service business misses 30-40% of inbound calls. Each one is a job that went to a competitor. Mention the founding client offer: $97/mo locked permanently, 3 spots only. End with a soft CTA. Include: trymetric.co
+- Email 3: 6 days later. Under 50 words. Create mild urgency — founding client spots are filling. After these 3 spots the price moves to $297/mo. Ask if they want to lock in before we move on. Include: trymetric.co
+- Email 4: 10 days later. Under 40 words. Friendly breakup. Leave the door open. Drop the Calendly link: calendly.com/metriccall. No hard sell.
 
 Return ONLY a valid JSON array, no markdown:
 [{"subject": "...", "body": "..."}, {"subject": "...", "body": "..."}, {"subject": "...", "body": "..."}, {"subject": "...", "body": "..."}]`;
@@ -76,4 +76,5 @@ export async function run() {
 
   await updateHealth('copyGen');
   await log('info', `copyGen complete. Processed: ${processed} leads`);
+  return { generated: processed };
 }
