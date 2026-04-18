@@ -13,6 +13,11 @@ const CITIES = [
   'Columbus, OH',
   'Tampa, FL',
   'Nashville, TN',
+  'Indianapolis, IN',
+  'Louisville, KY',
+  'Memphis, TN',
+  'Raleigh, NC',
+  'Baltimore, MD',
 ];
 
 // Rotate service type by day of week to maximize variety
@@ -31,7 +36,7 @@ async function startScrape(city, service) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       startUrls: [{ url: searchUrl, method: 'GET' }],
-      maxCrawledPlacesPerSearch: 10,
+      maxCrawledPlacesPerSearch: 20,
       scrapeContacts: true,
       skipClosedPlaces: true,
       website: 'withWebsite',
@@ -59,18 +64,31 @@ async function pollUntilDone(runId, timeoutMs = 300000) {
   throw new Error('Apify run timed out after 5 minutes');
 }
 
+const VALID_EMAIL = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+const FILE_EXTS = /\.(webp|png|jpg|jpeg|gif|svg|ico|pdf|zip|mp4|mp3|woff|woff2|ttf|eot)$/i;
+
+function isValidEmail(str) {
+  if (!str || typeof str !== 'string') return false;
+  if (!VALID_EMAIL.test(str)) return false;
+  if (FILE_EXTS.test(str)) return false;
+  if (str.includes('google.com') || str.includes('maps/')) return false;
+  return true;
+}
+
 function extractEmail(item) {
+  const candidates = [];
   const emailsObj = item.emails;
   if (Array.isArray(emailsObj) && emailsObj.length > 0) {
-    if (typeof emailsObj[0] === 'object') return emailsObj[0].email ?? null;
-    if (typeof emailsObj[0] === 'string') return emailsObj[0];
+    if (typeof emailsObj[0] === 'object') candidates.push(emailsObj[0].email ?? null);
+    if (typeof emailsObj[0] === 'string') candidates.push(emailsObj[0]);
   }
-  if (typeof item.email === 'string') return item.email;
+  if (typeof item.email === 'string') candidates.push(item.email);
   const personal = item.personalEmails;
-  if (Array.isArray(personal) && personal.length > 0) return personal[0];
+  if (Array.isArray(personal) && personal.length > 0) candidates.push(personal[0]);
   const company = item.companyEmails;
-  if (Array.isArray(company) && company.length > 0) return company[0];
-  return null;
+  if (Array.isArray(company) && company.length > 0) candidates.push(company[0]);
+
+  return candidates.find(isValidEmail) ?? null;
 }
 
 async function fetchResults(datasetId) {
@@ -131,4 +149,5 @@ export async function run() {
 
   await updateHealth('leadSourcing');
   await log('info', `leadSourcing complete. Inserted: ${inserted}`);
+  return { inserted };
 }
