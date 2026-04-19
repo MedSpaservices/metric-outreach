@@ -46,8 +46,7 @@ app.post('/run-daily-report', async (req, res) => {
 
   setImmediate(async () => {
     try {
-      const base = path.dirname(fileURLToPath(import.meta.url));
-      const { run } = await import(`${base}/outreach/dailyReport.js`);
+      const { run } = await import('./outreach/dailyReport.js');
       await run();
       console.log(`[${new Date().toISOString()}] Daily report complete`);
     } catch (err) {
@@ -68,8 +67,7 @@ app.post('/run-weekly-report', async (req, res) => {
 
   setImmediate(async () => {
     try {
-      const base = path.dirname(fileURLToPath(import.meta.url));
-      const { run } = await import(`${base}/outreach/weeklyReport.js`);
+      const { run } = await import('./outreach/weeklyReport.js');
       await run();
       console.log(`[${new Date().toISOString()}] Weekly report complete`);
     } catch (err) {
