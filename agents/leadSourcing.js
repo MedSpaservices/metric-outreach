@@ -97,6 +97,13 @@ async function fetchResults(datasetId) {
   return res.json();
 }
 
+async function scrapeCity(city, service) {
+  const { runId, datasetId } = await startScrape(city, service);
+  await pollUntilDone(runId);
+  const items = await fetchResults(datasetId);
+  return items;
+}
+
 export async function run() {
   await log('info', 'leadSourcing starting');
   const service = getTodayService();
@@ -106,21 +113,15 @@ export async function run() {
 
   for (const city of CITIES) {
     await log('info', `Scraping: ${service} in ${city}`);
-    let runId, datasetId;
-
-    try {
-      ({ runId, datasetId } = await startScrape(city, service));
-      await pollUntilDone(runId);
-    } catch (err) {
-      await log('error', `Apify scrape failed for ${city}`, { error: err.message });
-      continue;
-    }
 
     let items;
     try {
-      items = await fetchResults(datasetId);
+      items = await Promise.race([
+        scrapeCity(city, service),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('City timeout after 6 minutes')), 6 * 60 * 1000)),
+      ]);
     } catch (err) {
-      await log('error', `Dataset fetch failed for ${city}`, { error: err.message });
+      await log('error', `Skipping ${city}`, { error: err.message });
       continue;
     }
 
