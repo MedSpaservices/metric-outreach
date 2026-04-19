@@ -1,11 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cron from 'node-cron';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { log } from './shared/logger.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3002;
 
@@ -31,36 +28,9 @@ app.post('/run-pipeline', async (req, res) => {
 });
 
 async function runPipeline() {
-  const base = path.dirname(fileURLToPath(import.meta.url));
-  const pipeline = [
-    { name: 'leadSourcing', file: `${base}/agents/leadSourcing.js` },
-    { name: 'enrichment', file: `${base}/agents/enrichment.js` },
-    { name: 'copyGen', file: `${base}/agents/copyGen.js` },
-    { name: 'sequenceSender', file: `${base}/outreach/sequenceSender.js` },
-    { name: 'replyHandler', file: `${base}/outreach/replyHandler.js` },
-    { name: 'dailyReport', file: `${base}/outreach/dailyReport.js` },
-  ];
-
   console.log(`[${new Date().toISOString()}] Pipeline starting`);
-  for (const agent of pipeline) {
-    try {
-      console.log(`[${new Date().toISOString()}] Starting: ${agent.name}`);
-      const mod = await import(agent.file);
-      await mod.run();
-      console.log(`[${new Date().toISOString()}] Done: ${agent.name}`);
-    } catch (err) {
-      console.error(`[${new Date().toISOString()}] Failed: ${agent.name} — ${err.message}\n${err.stack}`);
-      // Send error alert email
-      try {
-        const { sendEmail } = await import('./shared/mailer.js');
-        await sendEmail(
-          process.env.REPORT_EMAIL,
-          `[Metric Outreach] Agent failed: ${agent.name}`,
-          `Error: ${err.message}\n\nStack:\n${err.stack}`
-        );
-      } catch {}
-    }
-  }
+  const { run } = await import('./orchestrator.js');
+  await run();
   console.log(`[${new Date().toISOString()}] Pipeline complete`);
 }
 
@@ -113,6 +83,17 @@ cron.schedule('0 9 * * *', async () => {
   await log('info', 'node-cron 9am trigger firing');
   await runPipeline();
 }, { timezone: 'America/New_York' });
+
+// Keepalive — ping self every 10 minutes to prevent Render free tier sleep
+const SERVICE_URL = process.env.RENDER_EXTERNAL_URL || 'https://metric-outreach.onrender.com';
+cron.schedule('*/10 * * * *', async () => {
+  try {
+    await fetch(`${SERVICE_URL}/`);
+    console.log(`[${new Date().toISOString()}] keepalive ping ok`);
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] keepalive ping failed — ${err.message}`);
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`[${new Date().toISOString()}] metric-outreach running on port ${PORT}`);
