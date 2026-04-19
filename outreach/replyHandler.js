@@ -6,7 +6,7 @@ import { log, updateHealth } from '../shared/logger.js';
 
 const CALENDLY = 'https://calendly.com/metriccall';
 
-const SYSTEM_PROMPT = `You are a B2B outreach assistant for Metric, a performance-based marketing consultancy. Classify email replies and draft follow-up messages. Always write in first person plural (we/our).
+const SYSTEM_PROMPT = `You are a B2B outreach assistant for Metric, an automated follow-up system for home service businesses. Metric installs a missed call text-back system — when a business misses a call on the job, the caller gets an automatic text within 60 seconds, is qualified by AI, and sent a booking link. Founding client rate is $97/mo, locked permanently. Classify email replies and draft follow-up messages. Always write in first person plural (we/our).
 
 Classify as:
 - "positive" — they're interested, want more info, or asked a question suggesting openness
@@ -81,4 +81,5 @@ export async function run() {
 
   await updateHealth('replyHandler');
   await log('info', `replyHandler complete. Booked: ${booked}`);
+  return { booked };
 }

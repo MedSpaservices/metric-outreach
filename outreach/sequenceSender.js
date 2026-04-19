@@ -82,4 +82,5 @@ export async function run() {
   await incrementEmailsSent(sent);
   await updateHealth('sequenceSender');
   await log('info', `sequenceSender complete. Sent: ${sent}/${DAILY_CAP} today`);
+  return { sent };
 }

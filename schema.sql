@@ -41,3 +41,11 @@ create table if not exists metric_system_health (
   status text default 'ok',
   emails_sent_today integer default 0
 );
+
+-- Weekly report snapshots — stores raw metrics per week for Claude synthesis
+create table if not exists weekly_report_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  week_start date not null unique,
+  metrics jsonb not null,
+  created_at timestamptz default now()
+);

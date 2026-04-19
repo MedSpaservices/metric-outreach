@@ -4,10 +4,10 @@ import supabase from '../shared/db.js';
 import { callHaiku } from '../shared/claude.js';
 import { log, updateHealth } from '../shared/logger.js';
 
-const SYSTEM_PROMPT = `You are a B2B lead scoring assistant. Score home service businesses on their likelihood to pay for a customer reactivation marketing campaign (25% revenue share, no upfront cost).
+const SYSTEM_PROMPT = `You are a B2B lead scoring assistant. Score home service businesses on their likelihood to pay $97/mo for an automated missed call text-back system.
 
-Score higher (7-10) for: solo-owned or small team, established business (5+ years implied by reviews), no obvious marketing agency, dated or minimal website, lots of reviews suggesting an existing customer base.
-Score lower (1-5) for: franchise/chain, already has active marketing campaigns, large staff, polished professional marketing presence.
+Score higher (7-10) for: solo-owned or small team, owner likely taking calls themselves, established business with steady inbound (reviews suggest they're busy), dated or minimal website, no obvious marketing agency managing their presence.
+Score lower (1-5) for: franchise/chain, large staff (calls likely handled by a receptionist), brand new business with few reviews, polished professional marketing presence suggesting they already have systems in place.
 
 Return ONLY valid JSON: {"score": <number 1-10>, "reason": "<one sentence>"}`;
 
@@ -21,8 +21,10 @@ async function fetchWebsiteData(url) {
     const raw = await res.text();
 
     // Extract email from raw HTML before parsing
-    const emailMatch = raw.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
-    const email = emailMatch ? emailMatch[0].toLowerCase() : null;
+    const FILE_EXTS = /\.(webp|png|jpg|jpeg|gif|svg|ico|pdf|zip|mp4|mp3|woff|woff2|ttf|eot)$/i;
+    const emailMatches = raw.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
+    const validEmail = emailMatches.find(e => !FILE_EXTS.test(e));
+    const email = validEmail ? validEmail.toLowerCase() : null;
 
     const root = parse(raw);
     root.querySelectorAll('script, style').forEach(el => el.remove());
@@ -39,8 +41,7 @@ export async function run() {
   const { data: leads, error } = await supabase
     .from('metric_leads')
     .select('id, website, email')
-    .eq('status', 'new')
-    .limit(20);
+    .eq('status', 'new');
 
   if (error) {
     await log('error', 'Failed to fetch leads', { error: error.message });
@@ -95,4 +96,5 @@ export async function run() {
 
   await updateHealth('enrichment');
   await log('info', `enrichment complete. Processed: ${processed}, Qualified: ${qualified}`);
+  return { processed, qualified };
 }
