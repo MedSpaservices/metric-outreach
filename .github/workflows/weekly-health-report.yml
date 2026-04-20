@@ -89,6 +89,7 @@ jobs:
 
           await Promise.all([
             check('Metric Outreach (Render)', () => checkEndpoint('Metric Outreach (Render)', 'https://metric-outreach.onrender.com')),
+            check('Metric Signal (Render)', () => checkEndpoint('Metric Signal (Render)', 'https://metric-signal.onrender.com')),
             check('Med Spa System (Render)', () => checkEndpoint('Med Spa System (Render)', 'https://meds-0u96.onrender.com')),
             check('Granta Business (Vercel)', () => checkEndpoint('Granta Business (Vercel)', 'https://grantabusiness.com')),
             check('Apify Compute Units', checkApify),
