@@ -147,6 +147,10 @@ jobs:
           </body>
           </html>`;
 
+          // --- Diagnostic: log key prefix (safe, non-sensitive) ---
+          const keyPrefix = (process.env.BREVO_API_KEY || '').substring(0, 10);
+          console.log('BREVO_API_KEY prefix:', keyPrefix);
+
           // --- Send via Brevo ---
           const emailRes = await fetch('https://api.brevo.com/v3/smtp/email', {
             method: 'POST',
