@@ -147,10 +147,6 @@ jobs:
           </body>
           </html>`;
 
-          // --- Diagnostic: log key prefix (safe, non-sensitive) ---
-          const keyPrefix = (process.env.BREVO_API_KEY || '').substring(0, 10);
-          console.log('BREVO_API_KEY prefix:', keyPrefix);
-
           // --- Send via Brevo ---
           const emailRes = await fetch('https://api.brevo.com/v3/smtp/email', {
             method: 'POST',
@@ -159,7 +155,7 @@ jobs:
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              sender: { name: 'Metric Monitor', email: 'mehlek7@gmail.com' },
+              sender: { name: 'Metric Monitor', email: 'hello@trymetric.co' },
               to: [{ email: 'mehlek7@gmail.com' }],
               subject: `Metric Infrastructure: ${overall === 'green' ? 'All Systems OK' : overall === 'yellow' ? 'Warning — Check Required' : 'ALERT — Service Down'} · ${new Date().toLocaleDateString()}`,
               htmlContent: html
