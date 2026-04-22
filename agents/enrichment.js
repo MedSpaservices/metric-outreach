@@ -72,7 +72,7 @@ export async function run() {
 
     const status = score !== null
       ? (score >= 6 ? 'qualified' : 'disqualified')
-      : 'new';
+      : 'disqualified';
 
     const update = {
       score,

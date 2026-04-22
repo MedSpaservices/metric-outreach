@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cron from 'node-cron';
 import { log } from './shared/logger.js';
+import supabase from './shared/db.js';
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -10,6 +11,44 @@ app.use(express.json());
 
 app.get('/', (req, res) => {
   res.json({ ok: true, service: 'metric-outreach', time: new Date().toISOString() });
+});
+
+// Brevo inbound reply webhook — receives parsed replies and logs them against leads
+app.post('/inbound-reply', async (req, res) => {
+  res.status(200).send('OK'); // always respond 200 immediately so Brevo doesn't retry
+
+  try {
+    const { From, TextBody, HtmlBody } = req.body || {};
+    if (!From) return;
+
+    const emailMatch = From.match(/<(.+?)>/) || [null, From.trim()];
+    const fromEmail = emailMatch[1]?.trim().toLowerCase();
+    if (!fromEmail) return;
+
+    const replyText = (TextBody || HtmlBody?.replace(/<[^>]+>/g, '') || '').trim();
+    if (!replyText) return;
+
+    const { data: lead } = await supabase
+      .from('metric_leads')
+      .select('id, status')
+      .eq('email', fromEmail)
+      .in('status', ['in_sequence', 'copy_ready'])
+      .maybeSingle();
+
+    if (!lead) {
+      await log('info', `Inbound reply from unknown address: ${fromEmail}`);
+      return;
+    }
+
+    await supabase
+      .from('metric_leads')
+      .update({ status: 'replied', reply_text: replyText })
+      .eq('id', lead.id);
+
+    await log('info', `Reply captured from ${fromEmail} — lead ${lead.id}`);
+  } catch (err) {
+    await log('error', `Inbound reply handler failed: ${err.message}`);
+  }
 });
 
 // External cron trigger — POST /run-pipeline with Authorization: Bearer <PIPELINE_SECRET>

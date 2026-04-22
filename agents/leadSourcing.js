@@ -28,10 +28,16 @@ function getTodayService() {
   return SERVICES[day % SERVICES.length];
 }
 
+function fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 async function startScrape(city, service) {
   const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(`${service} in ${city}`)}`;
 
-  const res = await fetch(`${BASE}/acts/${ACTOR_ID}/runs?token=${APIFY_TOKEN}`, {
+  const res = await fetchWithTimeout(`${BASE}/acts/${ACTOR_ID}/runs?token=${APIFY_TOKEN}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -54,7 +60,7 @@ async function pollUntilDone(runId, timeoutMs = 300000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     await new Promise(r => setTimeout(r, 10000));
-    const res = await fetch(`${BASE}/actor-runs/${runId}?token=${APIFY_TOKEN}`);
+    const res = await fetchWithTimeout(`${BASE}/actor-runs/${runId}?token=${APIFY_TOKEN}`);
     if (!res.ok) throw new Error(`Apify status check failed (${res.status})`);
     const json = await res.json();
     const status = json.data.status;
@@ -92,7 +98,7 @@ function extractEmail(item) {
 }
 
 async function fetchResults(datasetId) {
-  const res = await fetch(`${BASE}/datasets/${datasetId}/items?token=${APIFY_TOKEN}&clean=true`);
+  const res = await fetchWithTimeout(`${BASE}/datasets/${datasetId}/items?token=${APIFY_TOKEN}&clean=true`);
   if (!res.ok) throw new Error(`Apify dataset fetch failed (${res.status})`);
   return res.json();
 }
