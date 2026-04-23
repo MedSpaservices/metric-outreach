@@ -70,9 +70,10 @@ export async function run() {
       await log('error', `Haiku scoring failed for lead ${lead.id}`, { error: err.message });
     }
 
-    const status = score !== null
-      ? (score >= 6 ? 'qualified' : 'disqualified')
-      : 'disqualified';
+    const noWebsite = !websiteSnippet;
+    const status = noWebsite
+      ? 'qualified'
+      : (score !== null ? (score >= 5 ? 'qualified' : 'disqualified') : 'disqualified');
 
     const update = {
       score,
