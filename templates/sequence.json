@@ -1,0 +1,24 @@
+{
+  "steps": [
+    {
+      "step": 1,
+      "subject": "missed calls while you're on a job",
+      "body": "Hey — when you're on a job, you can't answer every call. But whoever just called {{business}} probably called the next company on Google right after.\n\nWe built a system that texts missed callers within 60 seconds, qualifies them, and sends a booking link — automatically. You finish the job you're on. The next one's already on your calendar.\n\nWorth a quick 15 minutes? trymetric.co"
+    },
+    {
+      "step": 2,
+      "subject": "30-40% of your calls go unanswered",
+      "body": "That's the average for owner-operated businesses like yours. Most of those callers don't leave a voicemail — they move on to the next result on Google.\n\nWe've been helping businesses like {{business}} capture those leads automatically. Text-back within 60 seconds, we qualify them, send a booking link. Founding rate is $97/mo — only 3 spots total.\n\nStill worth a look: trymetric.co"
+    },
+    {
+      "step": 3,
+      "subject": "what happens when someone calls and you don't pick up",
+      "body": "A homeowner in {{city}} calls {{business}}. You're mid-job. They hang up.\n\n60 seconds later, they get a text from your number: \"Hey — sorry we missed you. What's going on?\" They reply. It's an urgent job. A booking link goes straight to their phone.\n\nYou're still on the job. They're already on your calendar.\n\nThat's the whole system. Worth a look? trymetric.co"
+    },
+    {
+      "step": 4,
+      "subject": "closing the loop",
+      "body": "I know you're busy running jobs in {{city}}.\n\nIf missed calls ever become a real problem for {{business}}, we're easy to reach: calendly.com/metriccall\n\nGood luck out there."
+    }
+  ]
+}
