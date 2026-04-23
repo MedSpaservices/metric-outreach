@@ -13,6 +13,83 @@ app.get('/', (req, res) => {
   res.json({ ok: true, service: 'metric-outreach', time: new Date().toISOString() });
 });
 
+app.get('/dashboard', async (req, res) => {
+  if (req.query.key !== process.env.PIPELINE_SECRET) {
+    return res.status(401).send('Unauthorized');
+  }
+
+  const { data: leads } = await supabase
+    .from('metric_leads')
+    .select('business, city, email, status, sequence_step, last_contacted, created_at')
+    .order('created_at', { ascending: false })
+    .limit(500);
+
+  const counts = {};
+  for (const l of leads || []) {
+    counts[l.status] = (counts[l.status] || 0) + 1;
+  }
+
+  const statusColor = {
+    new: '#6b7280',
+    qualified: '#3b82f6',
+    copy_ready: '#8b5cf6',
+    in_sequence: '#f59e0b',
+    replied: '#10b981',
+    call_booked: '#00D4FF',
+    disqualified: '#ef4444',
+  };
+
+  const badge = (s) =>
+    `<span style="background:${statusColor[s] || '#6b7280'};color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600">${s}</span>`;
+
+  const rows = (leads || []).map(l => `
+    <tr>
+      <td>${l.business}</td>
+      <td>${l.city || '—'}</td>
+      <td style="color:#9ca3af;font-size:12px">${l.email || '—'}</td>
+      <td>${badge(l.status)}</td>
+      <td style="text-align:center">${l.sequence_step || 0} / 4</td>
+      <td style="color:#9ca3af;font-size:12px">${l.last_contacted ? new Date(l.last_contacted).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—'}</td>
+    </tr>`).join('');
+
+  const summaryCards = Object.entries(counts).map(([s, n]) =>
+    `<div style="background:#1f2937;border-radius:8px;padding:12px 20px;text-align:center">
+      <div style="font-size:24px;font-weight:700;color:${statusColor[s] || '#fff'}">${n}</div>
+      <div style="font-size:12px;color:#9ca3af;margin-top:2px">${s}</div>
+    </div>`
+  ).join('');
+
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Metric Pipeline</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #111827; color: #f9fafb; font-family: -apple-system, sans-serif; padding: 32px 24px; }
+    h1 { font-size: 20px; font-weight: 700; margin-bottom: 24px; color: #00D4FF; }
+    .cards { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 32px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 8px 12px; color: #6b7280; font-weight: 500; border-bottom: 1px solid #374151; }
+    td { padding: 10px 12px; border-bottom: 1px solid #1f2937; vertical-align: middle; }
+    tr:hover td { background: #1f2937; }
+  </style>
+</head>
+<body>
+  <h1>Metric Pipeline</h1>
+  <div class="cards">${summaryCards}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Business</th><th>City</th><th>Email</th><th>Status</th><th>Step</th><th>Last Sent</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+</body>
+</html>`);
+});
+
 // Brevo inbound reply webhook — receives parsed replies and logs them against leads
 app.post('/inbound-reply', async (req, res) => {
   res.status(200).send('OK'); // always respond 200 immediately so Brevo doesn't retry
