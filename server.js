@@ -13,6 +13,10 @@ app.get('/', (req, res) => {
   res.json({ ok: true, service: 'metric-outreach', time: new Date().toISOString() });
 });
 
+app.get('/health', (req, res) => {
+  res.json({ ok: true });
+});
+
 app.get('/dashboard', async (req, res) => {
   if (req.query.key !== process.env.PIPELINE_SECRET) {
     return res.status(401).send('Unauthorized');
