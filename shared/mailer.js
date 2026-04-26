@@ -10,7 +10,7 @@ export async function sendEmail(to, subject, body) {
     body: JSON.stringify({
       sender: { name: process.env.BREVO_FROM_NAME || 'Metric', email: process.env.BREVO_FROM_EMAIL },
       to: [{ email: to }],
-      replyTo: { email: 'mehlek7@gmail.com' },
+      replyTo: { email: 'hello@trymetric.co' },
       subject,
       textContent: body,
     }),
