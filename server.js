@@ -13,8 +13,46 @@ app.get('/', (req, res) => {
   res.json({ ok: true, service: 'metric-outreach', time: new Date().toISOString() });
 });
 
-app.get('/health', (req, res) => {
-  res.json({ ok: true });
+app.get('/health', async (req, res) => {
+  try {
+    const { data: health, error } = await supabase
+      .from('metric_system_health')
+      .select('agent_name, last_run, emails_sent_today, last_run_date')
+      .order('agent_name');
+    if (error) throw error;
+
+    const { data: leads } = await supabase.from('metric_leads').select('status');
+
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const leadCounts = {};
+    for (const l of leads || []) leadCounts[l.status] = (leadCounts[l.status] || 0) + 1;
+
+    const agents = {};
+    for (const row of health || []) {
+      const lastRun = row.last_run ? new Date(row.last_run) : null;
+      agents[row.agent_name] = {
+        lastRun: row.last_run,
+        hoursAgo: lastRun ? Math.round((now - lastRun) / 3600000 * 10) / 10 : null,
+        ...(row.agent_name === 'sequenceSender' ? { emailsSentToday: row.last_run_date === today ? (row.emails_sent_today || 0) : 0 } : {})
+      };
+    }
+
+    const pipelineLastRun = agents.sequenceSender?.lastRun || agents.leadSourcing?.lastRun || null;
+    const pipelineHoursAgo = pipelineLastRun ? Math.round((now - new Date(pipelineLastRun)) / 3600000 * 10) / 10 : null;
+
+    res.json({
+      service: 'metric-outreach',
+      db: 'connected',
+      pipeline: { lastRun: pipelineLastRun, hoursAgo: pipelineHoursAgo, status: pipelineHoursAgo !== null && pipelineHoursAgo > 30 ? 'stale' : 'ok' },
+      emailsSentToday: agents.sequenceSender?.emailsSentToday ?? 0,
+      leads: leadCounts,
+      agents,
+      time: now.toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ service: 'metric-outreach', db: 'error', error: err.message, time: new Date().toISOString() });
+  }
 });
 
 app.get('/dashboard', async (req, res) => {
