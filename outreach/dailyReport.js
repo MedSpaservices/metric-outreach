@@ -57,7 +57,7 @@ export async function run() {
   const { count: booked } = await supabase
     .from('metric_leads')
     .select('*', { count: 'exact', head: true })
-    .eq('status', 'call_booked');
+    .in('status', ['link_sent', 'call_booked']);
 
   const { count: totalLeads } = await supabase
     .from('metric_leads')

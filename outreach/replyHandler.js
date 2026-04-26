@@ -5,6 +5,7 @@ import { sendEmail } from '../shared/mailer.js';
 import { log, updateHealth } from '../shared/logger.js';
 
 const CALENDLY = 'https://calendly.com/metriccall';
+const LINK_SENT_FOLLOWUP_DAYS = 5;
 
 const SYSTEM_PROMPT = `You are a B2B outreach assistant for Metric, an automated follow-up system for home service businesses. Metric installs a missed call text-back system — when a business misses a call on the job, the caller gets an automatic text within 60 seconds, is qualified by AI, and sent a booking link. Founding client rate is $97/mo, locked permanently. Classify email replies and draft follow-up messages. Always write in first person plural (we/our).
 
@@ -17,9 +18,41 @@ If positive, draft a short reply (under 60 words, conversational, we/our) that a
 
 Return ONLY valid JSON: {"classification": "positive|negative|neutral", "draft_reply": "<text or null>"}`;
 
+function daysAgo(days) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
+}
+
 export async function run() {
   await log('info', 'replyHandler starting');
 
+  // --- Nudge leads who got the Calendly link but haven't booked in 5+ days ---
+  const { data: stale } = await supabase
+    .from('metric_leads')
+    .select('id, email, business')
+    .eq('status', 'link_sent')
+    .lt('last_contacted', daysAgo(LINK_SENT_FOLLOWUP_DAYS));
+
+  for (const lead of stale || []) {
+    if (!lead.email) {
+      await supabase.from('metric_leads').update({ status: 'abandoned' }).eq('id', lead.id);
+      continue;
+    }
+    try {
+      await sendEmail(
+        lead.email,
+        'still interested in the Metric call?',
+        `Hey — you reached out a few days ago about missed calls at ${lead.business}.\n\nIf you're still curious, here's the link to grab 15 minutes with us: ${CALENDLY}\n\nNo pressure either way — just didn't want to leave you hanging.`
+      );
+      await supabase.from('metric_leads').update({ status: 'abandoned', last_contacted: new Date().toISOString() }).eq('id', lead.id);
+      await log('info', `Nudge sent to stale link_sent lead ${lead.id} — moved to abandoned`);
+    } catch (err) {
+      await log('error', `Nudge send failed for lead ${lead.id}`, { error: err.message });
+    }
+  }
+
+  // --- Classify new replies ---
   const { data: leads, error } = await supabase
     .from('metric_leads')
     .select('id, email, business, reply_text, sequence_step')
@@ -69,7 +102,10 @@ export async function run() {
           `Re: ${seq?.subject || 'Our conversation'}`,
           draftReply
         );
-        await supabase.from('metric_leads').update({ status: 'call_booked' }).eq('id', lead.id);
+        await supabase.from('metric_leads').update({
+          status: 'link_sent',
+          last_contacted: new Date().toISOString(),
+        }).eq('id', lead.id);
         booked++;
         await log('info', `Calendly link sent to lead ${lead.id}`);
       } catch (err) {
@@ -80,6 +116,6 @@ export async function run() {
   }
 
   await updateHealth('replyHandler');
-  await log('info', `replyHandler complete. Booked: ${booked}`);
+  await log('info', `replyHandler complete. Link sent: ${booked}`);
   return { booked };
 }

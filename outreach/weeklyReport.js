@@ -299,8 +299,8 @@ export async function run() {
   ] = await Promise.all([
     supabase.from('metric_leads').select('id, city, score, status').gte('created_at', weekAgo),
     supabase.from('metric_sequences').select('id').eq('status', 'sent').gte('sent_at', weekAgo),
-    supabase.from('metric_leads').select('id, reply_text, status').in('status', ['replied', 'call_booked']).gte('last_contacted', weekAgo),
-    supabase.from('metric_leads').select('id', { count: 'exact', head: true }).eq('status', 'call_booked'),
+    supabase.from('metric_leads').select('id, reply_text, status').in('status', ['replied', 'link_sent', 'call_booked']).gte('last_contacted', weekAgo),
+    supabase.from('metric_leads').select('id', { count: 'exact', head: true }).in('status', ['link_sent', 'call_booked']),
     supabase.from('metric_leads').select('id', { count: 'exact', head: true }).eq('status', 'in_sequence'),
     supabase.from('metric_system_health').select('agent_name, last_run, status'),
   ]);
@@ -331,7 +331,7 @@ export async function run() {
     .sort((a, b) => b.count - a.count);
 
   const qualifiedLeadsWeek = (newLeadsData || []).filter(l => l.score >= 6).length;
-  const callsBookedWeek = (repliedLeads || []).filter(l => l.status === 'call_booked').length;
+  const callsBookedWeek = (repliedLeads || []).filter(l => l.status === 'link_sent' || l.status === 'call_booked').length;
   const positiveRepliesWeek = (repliedLeads || []).length;
 
   const metrics = {

@@ -79,6 +79,8 @@ app.get('/dashboard', async (req, res) => {
     in_sequence: '#f59e0b',
     replied: '#10b981',
     call_booked: '#00D4FF',
+    link_sent: '#00D4FF',
+    abandoned: '#374151',
     disqualified: '#ef4444',
   };
 
