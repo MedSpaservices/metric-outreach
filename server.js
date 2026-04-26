@@ -329,12 +329,6 @@ async function runHealthCheck(mode) {
   }
 }
 
-// node-cron backup — 9am EST daily (external cron-job.org trigger is primary)
-cron.schedule('0 9 * * *', async () => {
-  await log('info', 'node-cron 9am trigger firing');
-  await runPipeline();
-}, { timezone: 'America/New_York' });
-
 // Keepalive — ping self every 10 minutes to prevent Render free tier sleep
 const SERVICE_URL = process.env.RENDER_EXTERNAL_URL || 'https://metric-outreach.onrender.com';
 cron.schedule('*/10 * * * *', async () => {
