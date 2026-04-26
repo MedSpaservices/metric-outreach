@@ -11,6 +11,17 @@ Score lower (1-5) for: franchise/chain, large staff (calls likely handled by a r
 
 Return ONLY valid JSON: {"score": <number 1-10>, "reason": "<one sentence>"}`;
 
+const FILE_EXTS = /\.(webp|png|jpg|jpeg|gif|svg|ico|pdf|zip|mp4|mp3|woff|woff2|ttf|eot)$/i;
+const JUNK_PREFIXES = /^(noreply|no-reply|donotreply|do-not-reply|bounce|mailer-daemon|postmaster|unsubscribe|abuse|spam|webmaster|admin|administrator|root|hostmaster|info|contact|support|help|hello|hi|hey|team|office|mail|email|feedback|enquiry|enquiries|query|queries|sales|marketing|billing|accounts|hr|careers|jobs|press|media|legal|privacy|security|service|services|general|reception|front|desk)@/i;
+const JUNK_DOMAINS = /\.(png|jpg|gif|webp|svg|example\.com|sentry\.io|wix\.com|squarespace\.com|shopify\.com|wordpress\.com)$/i;
+
+function isUsableEmail(e) {
+  if (!e || FILE_EXTS.test(e)) return false;
+  if (JUNK_PREFIXES.test(e)) return false;
+  if (JUNK_DOMAINS.test(e.split('@')[1] || '')) return false;
+  return true;
+}
+
 async function fetchWebsiteData(url) {
   if (!url) return { text: null, email: null };
   try {
@@ -20,10 +31,8 @@ async function fetchWebsiteData(url) {
     clearTimeout(timeout);
     const raw = await res.text();
 
-    // Extract email from raw HTML before parsing
-    const FILE_EXTS = /\.(webp|png|jpg|jpeg|gif|svg|ico|pdf|zip|mp4|mp3|woff|woff2|ttf|eot)$/i;
     const emailMatches = raw.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) || [];
-    const validEmail = emailMatches.find(e => !FILE_EXTS.test(e));
+    const validEmail = emailMatches.find(e => isUsableEmail(e));
     const email = validEmail ? validEmail.toLowerCase() : null;
 
     const root = parse(raw);
