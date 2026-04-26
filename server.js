@@ -3,6 +3,7 @@ import express from 'express';
 import cron from 'node-cron';
 import { log } from './shared/logger.js';
 import supabase from './shared/db.js';
+import { sendEmail } from './shared/mailer.js';
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -233,6 +234,100 @@ app.post('/run-weekly-report', async (req, res) => {
     }
   });
 });
+
+// Health check — POST /check-health?mode=pre|post with Authorization: Bearer <PIPELINE_SECRET>
+// pre = fires 2h before pipelines run (7am EST), post = fires 1h after (10am EST)
+// Only sends email if issues are found
+app.post('/check-health', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (token !== process.env.PIPELINE_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const mode = req.query.mode;
+  if (!['pre', 'post'].includes(mode)) {
+    return res.status(400).json({ error: 'mode must be pre or post' });
+  }
+  res.json({ ok: true, message: `Health check (${mode}) started` });
+  setImmediate(async () => {
+    try { await runHealthCheck(mode); }
+    catch (err) { await log('error', `check-health failed: ${err.message}`); }
+  });
+});
+
+async function runHealthCheck(mode) {
+  const issues = [];
+
+  // metric-outreach (self) — query DB directly
+  try {
+    const { data: health, error } = await supabase
+      .from('metric_system_health')
+      .select('agent_name, last_run, emails_sent_today, last_run_date')
+      .order('agent_name');
+    if (error) throw error;
+
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const sender = health?.find(r => r.agent_name === 'sequenceSender');
+    const lastRun = sender?.last_run ? new Date(sender.last_run) : null;
+    const hoursAgo = lastRun ? Math.round((now - lastRun) / 3600000 * 10) / 10 : null;
+    const emailsSentToday = sender?.last_run_date === today ? (sender.emails_sent_today || 0) : 0;
+
+    if (mode === 'pre' && (hoursAgo === null || hoursAgo > 30)) {
+      issues.push(`metric-outreach: pipeline last ran ${hoursAgo ?? 'never'} hours ago — yesterday may have failed`);
+    }
+    if (mode === 'post') {
+      if (hoursAgo === null || hoursAgo > 3) {
+        issues.push(`metric-outreach: pipeline hasn't run today (last run ${hoursAgo ?? 'never'} hours ago)`);
+      } else if (emailsSentToday === 0) {
+        issues.push(`metric-outreach: pipeline ran but 0 emails sent — sequenceSender may have failed`);
+      }
+    }
+  } catch (err) {
+    issues.push(`metric-outreach: DB unreachable — ${err.message}`);
+  }
+
+  // firmflow-outreach — hit its /health endpoint
+  try {
+    const r = await fetch('https://firmflow-outreach.onrender.com/health');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (data.db === 'error') {
+      issues.push(`firmflow-outreach: DB error — ${data.error}`);
+    } else if (mode === 'pre' && (data.pipeline?.hoursAgo === null || data.pipeline?.hoursAgo > 30)) {
+      issues.push(`firmflow-outreach: pipeline last ran ${data.pipeline?.hoursAgo ?? 'never'} hours ago — yesterday may have failed`);
+    } else if (mode === 'post' && (data.pipeline?.hoursAgo === null || data.pipeline?.hoursAgo > 3)) {
+      issues.push(`firmflow-outreach: pipeline hasn't run today (last run ${data.pipeline?.hoursAgo ?? 'never'} hours ago)`);
+    }
+  } catch (err) {
+    issues.push(`firmflow-outreach: unreachable — ${err.message}`);
+  }
+
+  // metric-product — connectivity only, both modes
+  try {
+    const r = await fetch('https://metric-product.onrender.com/health');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (data.db === 'error') issues.push(`metric-product: DB error — ${data.error}`);
+  } catch (err) {
+    issues.push(`metric-product: unreachable — ${err.message}`);
+  }
+
+  await log('info', `check-health (${mode}): ${issues.length === 0 ? 'all clear' : issues.length + ' issue(s) found'}`);
+
+  if (issues.length > 0) {
+    const label = mode === 'pre' ? 'PRE-RUN CHECK' : 'POST-RUN CHECK';
+    const subject = `[${label}] ${issues.length} pipeline issue${issues.length > 1 ? 's' : ''} — action needed`;
+    const body = [
+      `Automated ${mode === 'pre' ? 'pre-run (7am)' : 'post-run (10am)'} health check found ${issues.length} issue${issues.length > 1 ? 's' : ''}:`,
+      '',
+      ...issues.map(i => `• ${i}`),
+      '',
+      `Checked at: ${new Date().toISOString()}`,
+    ].join('\n');
+    await sendEmail(process.env.REPORT_EMAIL, subject, body);
+    await log('warn', `check-health alert sent (${mode}): ${issues.join(' | ')}`);
+  }
+}
 
 // node-cron backup — 9am EST daily (external cron-job.org trigger is primary)
 cron.schedule('0 9 * * *', async () => {
